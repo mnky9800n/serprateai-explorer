@@ -6,26 +6,33 @@ Interactive browser-based visualization for the [SerpRateAI datasets](https://gi
 
 - **16 time series datasets**: pressure, temperature, precipitation, soil temps, earth tides, bubble counts, etc.
 - **Checkboxes** to select which series to display
+- **Cumulative sum toggle** per plot for cumulative analysis
 - **Stacked subplots** sharing a common time axis
 - **Linked zoom/pan** - all plots zoom and pan together
 - **Click-and-drag zoom** via box zoom tool
-- **Matplotlib export** - button to download publication-quality PNG of current view
+- **Matplotlib export** - downloads publication-quality PNG of current view
 
 ## Installation
 
+Requires [uv](https://docs.astral.sh/uv/) for package management.
+
 ```bash
-pip install -r requirements.txt
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Dependencies are automatically handled by uv
 ```
 
 ## Running
 
 ```bash
-# Option 1: Run script
 ./run.sh
-
-# Option 2: Direct command
-bokeh serve app.py --show --port 5006
 ```
+
+This will:
+1. Check for dataset updates
+2. Install dependencies (via uv)
+3. Launch the Bokeh server
 
 Then open http://localhost:5006/app in your browser.
 
@@ -50,15 +57,23 @@ Then open http://localhost:5006/app in your browser.
 - **Box Zoom**: Select box zoom tool, then drag to zoom
 - **Wheel Zoom**: Scroll to zoom
 - **Reset**: Reset button returns to full view
+- **Cumulative**: Toggle cumulative sum for individual plots
 - **Export**: Click "Export to Matplotlib" to download current view as PNG
+
+## Links
+
+- [Explorer Repository](https://github.com/mnky9800n/serprateai-explorer)
+- [Datasets Repository](https://github.com/SerpRateAI/datasets)
+- [Report a Bug](https://github.com/mnky9800n/serprateai-explorer/issues/new)
 
 ## Project Structure
 
 ```
-serprateai-explorer-bokeh/
+serprateai-explorer/
 ├── app.py              # Main Bokeh server application
-├── requirements.txt    # Python dependencies
+├── pyproject.toml      # Python dependencies (uv)
+├── uv.lock            # Locked dependencies
 ├── run.sh             # Launch script
 ├── README.md          # This file
-└── data/              # Cloned SerpRateAI datasets repo
+└── data/              # SerpRateAI datasets
 ```

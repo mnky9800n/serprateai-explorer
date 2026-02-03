@@ -14,7 +14,7 @@ import numpy as np
 from bokeh.io import curdoc
 from bokeh.layouts import column, row
 from bokeh.models import (
-    ColumnDataSource, CheckboxGroup, Button, Div, 
+    ColumnDataSource, CheckboxGroup, Button, Div, Toggle,
     RangeTool, Range1d, DataRange1d, HoverTool,
     BoxZoomTool, PanTool, ResetTool, WheelZoomTool,
     CrosshairTool, CustomJS
@@ -78,6 +78,7 @@ def create_app():
     print("Loading datasets...")
     datasets = {}
     sources = {}
+    original_values = {}  # Store original values for cumulative toggle
     
     for filename, dt_col, val_col, display_name, unit in DATASETS:
         df = load_dataset(filename, dt_col, val_col)
@@ -91,6 +92,7 @@ def create_app():
                 'datetime': df['datetime'].values,
                 'value': df['value'].values
             })
+            original_values[display_name] = df['value'].values.copy()
             print(f"  Loaded {display_name}: {len(df)} points")
     
     dataset_names = list(datasets.keys())
@@ -98,6 +100,20 @@ def create_app():
     
     # Color palette
     colors = Category10_10 if n_datasets <= 10 else [Turbo256[i * 256 // n_datasets] for i in range(n_datasets)]
+    
+    # === TOP LINKS BAR ===
+    links_bar = Div(text="""
+        <div style="background: #f5f5f5; padding: 10px; border-radius: 5px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <a href="https://github.com/mnky9800n/serprateai-explorer" target="_blank" style="margin-right: 20px;">📦 Explorer Repo</a>
+                <a href="https://github.com/SerpRateAI/datasets" target="_blank" style="margin-right: 20px;">📊 Datasets Repo</a>
+            </div>
+            <a href="https://github.com/mnky9800n/serprateai-explorer/issues/new" target="_blank" 
+               style="background: #0066cc; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none; font-weight: bold;">
+                🐞🐞🐞 Report Bug! 🐞🐞🐞
+            </a>
+        </div>
+    """, width=1200)
     
     # Create checkbox group for dataset selection
     checkbox_group = CheckboxGroup(
@@ -117,7 +133,8 @@ def create_app():
             <li>Drag to pan, scroll to zoom</li>
             <li>Box zoom: click box zoom tool, then drag</li>
             <li>All plots zoom/pan together</li>
-            <li>Click "Export to Matplotlib" to download publication figure</li>
+            <li>Toggle "Σ Cumulative" per plot for cumulative sum</li>
+            <li>Click "Export to Matplotlib" to download figure</li>
         </ul>
     """, width=250)
     
@@ -132,8 +149,10 @@ def create_app():
     # Shared x_range for linked panning/zooming
     shared_x_range = Range1d(start=min_time, end=max_time)
     
-    # Create figures dictionary
+    # Create figures dictionary and cumulative toggles
     figures = {}
+    cumulative_toggles = {}
+    cumulative_state = {}  # Track cumulative state per dataset
     
     # Common tools
     tools = "pan,box_zoom,wheel_zoom,reset,save"
@@ -141,6 +160,16 @@ def create_app():
     for i, name in enumerate(dataset_names):
         df = datasets[name]['df']
         unit = datasets[name]['unit']
+        cumulative_state[name] = False
+        
+        # Create cumulative toggle button for this dataset
+        cumulative_toggle = Toggle(
+            label="Σ Cumulative",
+            button_type="default",
+            active=False,
+            width=100
+        )
+        cumulative_toggles[name] = cumulative_toggle
         
         # Create figure with shared x_range
         p = figure(
@@ -148,7 +177,7 @@ def create_app():
             x_axis_type='datetime',
             x_range=shared_x_range,
             height=200,
-            width=900,
+            width=800,
             tools=tools,
             active_drag='pan',
             active_scroll='wheel_zoom'
@@ -188,30 +217,66 @@ def create_app():
         p.visible = i in checkbox_group.active
         
         figures[name] = p
+        
+        # Cumulative toggle callback
+        def make_cumulative_callback(dataset_name):
+            def callback(attr, old, new):
+                source = sources[dataset_name]
+                orig = original_values[dataset_name]
+                unit = datasets[dataset_name]['unit']
+                
+                if new:  # Cumulative is ON
+                    cumsum = np.nancumsum(orig)
+                    source.data['value'] = cumsum
+                    figures[dataset_name].yaxis.axis_label = f"{dataset_name} (cumulative {unit})"
+                    cumulative_toggles[dataset_name].button_type = "success"
+                    cumulative_state[dataset_name] = True
+                else:  # Cumulative is OFF
+                    source.data['value'] = orig.copy()
+                    figures[dataset_name].yaxis.axis_label = f"{dataset_name} ({unit})"
+                    cumulative_toggles[dataset_name].button_type = "default"
+                    cumulative_state[dataset_name] = False
+            return callback
+        
+        cumulative_toggle.on_change('active', make_cumulative_callback(name))
     
-    # Create plot layout
-    plot_column = column(
-        *[figures[name] for name in dataset_names],
-        sizing_mode='stretch_width'
-    )
+    # Create plot layout with toggle buttons
+    plot_rows = []
+    for name in dataset_names:
+        plot_row = row(
+            cumulative_toggles[name],
+            figures[name],
+            sizing_mode='stretch_width'
+        )
+        plot_rows.append(plot_row)
+    
+    plot_column = column(*plot_rows, sizing_mode='stretch_width')
     
     # Callback to toggle plot visibility
     def checkbox_callback(attr, old, new):
         for i, name in enumerate(dataset_names):
-            figures[name].visible = i in new
+            visible = i in new
+            figures[name].visible = visible
+            cumulative_toggles[name].visible = visible
     
     checkbox_group.on_change('active', checkbox_callback)
     
-    # Export button
-    export_button = Button(label="Export to Matplotlib", button_type="success", width=200)
+    # Initialize visibility
+    for i, name in enumerate(dataset_names):
+        visible = i in checkbox_group.active
+        figures[name].visible = visible
+        cumulative_toggles[name].visible = visible
     
-    # Download link div (hidden, used for file download)
-    download_div = Div(text="", visible=False)
+    # Export button
+    export_button = Button(label="📥 Export to Matplotlib", button_type="success", width=200)
+    
+    # Hidden download div for triggering browser download
+    download_div = Div(text="", width=1, height=1)
     
     # Status div
     status_div = Div(text="", width=250)
     
-    # Export callback - generates matplotlib figure server-side
+    # Export callback - generates matplotlib figure server-side and triggers download
     def export_callback():
         import matplotlib
         matplotlib.use('Agg')
@@ -243,16 +308,24 @@ def create_app():
             axes = [axes]
         
         for ax, name in zip(axes, active_names):
-            df = datasets[name]['df']
+            df = datasets[name]['df'].copy()
             unit = datasets[name]['unit']
             color = colors[dataset_names.index(name) % len(colors)]
+            is_cumulative = cumulative_state[name]
+            
+            # Apply cumulative if toggled
+            if is_cumulative:
+                df['value'] = np.nancumsum(df['value'].values)
+                unit_label = f"cumulative {unit}"
+            else:
+                unit_label = unit
             
             # Filter to current view range
             mask = (df['datetime'] >= x_start) & (df['datetime'] <= x_end)
             df_view = df[mask]
             
             ax.plot(df_view['datetime'], df_view['value'], color=color, linewidth=1)
-            ax.set_ylabel(f"{name}\n({unit})", fontsize=10)
+            ax.set_ylabel(f"{name}\n({unit_label})", fontsize=10)
             ax.grid(True, alpha=0.3)
             ax.tick_params(axis='both', labelsize=9)
         
@@ -273,41 +346,52 @@ def create_app():
         buf.seek(0)
         plt.close(fig)
         
-        # Encode as base64 and create download link
+        # Encode as base64 and trigger download via hidden link
         b64 = base64.b64encode(buf.read()).decode('utf-8')
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"serprateai_export_{timestamp}.png"
         
+        # Create auto-clicking download link
         download_div.text = f'''
-            <a id="download_link" download="serprateai_export_{timestamp}.png" 
+            <a id="download_link_{timestamp}" 
+               download="{filename}" 
                href="data:image/png;base64,{b64}"
-               style="display:none">Download</a>
+               style="display:none;">Download</a>
             <script>
-                document.getElementById('download_link').click();
+                (function() {{
+                    var link = document.getElementById('download_link_{timestamp}');
+                    if (link) {{
+                        link.click();
+                    }}
+                }})();
             </script>
         '''
-        download_div.visible = True
         
-        status_div.text = f"<p style='color:green'>✓ Exported {n_plots} plots</p>"
+        status_div.text = f"<p style='color:green'>✓ Downloaded {filename}</p>"
     
     export_button.on_click(export_callback)
     
     # Layout
     controls = column(
-        title_div,
         Div(text="<h3>Select Datasets:</h3>"),
         checkbox_group,
         Div(text="<hr>"),
         export_button,
         status_div,
-        download_div,
         Div(text="<hr>"),
         instructions,
         width=280
     )
     
-    layout = row(controls, plot_column, sizing_mode='stretch_width')
+    main_area = column(
+        links_bar,
+        title_div,
+        row(controls, plot_column, sizing_mode='stretch_width'),
+        download_div,
+        sizing_mode='stretch_width'
+    )
     
-    return layout
+    return main_area
 
 
 # Create and add to document
