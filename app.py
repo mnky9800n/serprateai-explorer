@@ -7,17 +7,17 @@ import os
 import io
 import base64
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 import numpy as np
 from bokeh.io import curdoc
-from bokeh.layouts import column, row
+from bokeh.layouts import column, row, Spacer
 from bokeh.models import (
     ColumnDataSource, CheckboxGroup, Button, Div, Toggle,
     RangeTool, Range1d, DataRange1d, HoverTool,
     BoxZoomTool, PanTool, ResetTool, WheelZoomTool,
-    CrosshairTool, CustomJS
+    CrosshairTool, CustomJS, FileDownload
 )
 from bokeh.plotting import figure
 from bokeh.palettes import Category10_10, Turbo256
@@ -87,7 +87,9 @@ def create_app():
             datasets[display_name] = {
                 'df': df,
                 'unit': unit,
-                'filename': filename
+                'filename': filename,
+                'min_time': df['datetime'].min(),
+                'max_time': df['datetime'].max(),
             }
             sources[display_name] = ColumnDataSource(data={
                 'datetime': df['datetime'].values,
@@ -102,19 +104,28 @@ def create_app():
     # Color palette
     colors = Category10_10 if n_datasets <= 10 else [Turbo256[i * 256 // n_datasets] for i in range(n_datasets)]
     
-    # === TOP LINKS BAR ===
+    # === TOP LINKS BAR (CENTERED) ===
     links_bar = Div(text="""
-        <div style="background: #f5f5f5; padding: 10px; border-radius: 5px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <a href="https://github.com/mnky9800n/serprateai-explorer" target="_blank" style="margin-right: 20px;">📦 Explorer Repo</a>
-                <a href="https://github.com/SerpRateAI/datasets" target="_blank" style="margin-right: 20px;">📊 Datasets Repo</a>
-            </div>
+        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px; 
+                    display: flex; justify-content: center; align-items: center; gap: 30px;">
+            <a href="https://github.com/mnky9800n/serprateai-explorer" target="_blank" 
+               style="color: #333; text-decoration: none; font-weight: 500;">📦 Explorer Repo</a>
+            <a href="https://github.com/SerpRateAI/datasets" target="_blank" 
+               style="color: #333; text-decoration: none; font-weight: 500;">📊 Datasets Repo</a>
             <a href="https://github.com/mnky9800n/serprateai-explorer/issues/new" target="_blank" 
-               style="background: #0066cc; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none; font-weight: bold;">
+               style="background: #0066cc; color: white; padding: 10px 20px; border-radius: 6px; 
+                      text-decoration: none; font-weight: bold; font-size: 14px;">
                 🐞🐞🐞 Report Bug! 🐞🐞🐞
             </a>
         </div>
-    """, width=1200)
+    """, sizing_mode='stretch_width')
+    
+    # Title (CENTERED)
+    title_div = Div(text="""
+        <h1 style="text-align: center; margin: 20px 0; color: #333;">
+            SerpRateAI Time Series Explorer
+        </h1>
+    """, sizing_mode='stretch_width')
     
     # Create checkbox group for dataset selection
     checkbox_group = CheckboxGroup(
@@ -123,37 +134,39 @@ def create_app():
         width=250
     )
     
-    # Title
-    title_div = Div(text="<h1>SerpRateAI Time Series Explorer</h1>", width=600)
-    
     # Instructions
     instructions = Div(text="""
-        <p><b>Instructions:</b></p>
-        <ul>
-            <li>Select datasets using checkboxes on the left</li>
-            <li>Drag to pan, scroll to zoom</li>
-            <li>Box zoom: click box zoom tool, then drag</li>
-            <li>All plots zoom/pan together</li>
-            <li>Toggle "Σ Cumulative" per plot for cumulative sum</li>
-            <li>Click "Export to Matplotlib" to download figure</li>
-        </ul>
+        <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-top: 10px;">
+            <p style="font-weight: bold; margin-bottom: 10px;">Instructions:</p>
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                <li>Select datasets using checkboxes</li>
+                <li>Drag to pan, scroll to zoom</li>
+                <li>Box zoom: select tool, then drag</li>
+                <li>All plots zoom/pan together</li>
+                <li>Toggle "Σ" for cumulative sum</li>
+                <li>Use ▲▼ to reorder plots</li>
+            </ul>
+        </div>
     """, width=250)
     
-    # Find global time range
+    # Find global time range for initial view
     all_times = []
     for name in dataset_names:
         all_times.extend(datasets[name]['df']['datetime'].tolist())
     
-    min_time = min(all_times)
-    max_time = max(all_times)
+    global_min_time = min(all_times)
+    global_max_time = max(all_times)
     
     # Shared x_range for linked panning/zooming
-    shared_x_range = Range1d(start=min_time, end=max_time)
+    shared_x_range = Range1d(start=global_min_time, end=global_max_time)
     
-    # Create figures dictionary and cumulative toggles
+    # Create figures dictionary and controls
     figures = {}
     cumulative_toggles = {}
-    cumulative_state = {}  # Track cumulative state per dataset
+    move_up_buttons = {}
+    move_down_buttons = {}
+    cumulative_state = {}
+    plot_order = list(range(n_datasets))  # Track current order
     
     # Common tools
     tools = "pan,box_zoom,wheel_zoom,reset,save"
@@ -163,25 +176,31 @@ def create_app():
         unit = datasets[name]['unit']
         cumulative_state[name] = False
         
-        # Create cumulative toggle button for this dataset
+        # Create cumulative toggle button
         cumulative_toggle = Toggle(
-            label="Σ Cumulative",
+            label="Σ",
             button_type="default",
             active=False,
-            width=100
+            width=40
         )
         cumulative_toggles[name] = cumulative_toggle
+        
+        # Create move up/down buttons
+        move_up = Button(label="▲", button_type="light", width=30)
+        move_down = Button(label="▼", button_type="light", width=30)
+        move_up_buttons[name] = move_up
+        move_down_buttons[name] = move_down
         
         # Create figure with shared x_range
         p = figure(
             title=f"{name} ({unit})",
             x_axis_type='datetime',
             x_range=shared_x_range,
-            height=200,
-            width=800,
+            height=180,
             tools=tools,
             active_drag='pan',
-            active_scroll='wheel_zoom'
+            active_scroll='wheel_zoom',
+            sizing_mode='stretch_width'
         )
         
         # Add line
@@ -210,9 +229,10 @@ def create_app():
         
         # Style
         p.legend.visible = False
-        p.xaxis.axis_label = "Time"
-        p.yaxis.axis_label = f"{name} ({unit})"
-        p.xaxis.visible = True
+        p.xaxis.axis_label = None
+        p.yaxis.axis_label = f"{unit}"
+        p.title.text_font_size = "11pt"
+        p.min_border_left = 80
         
         # Initially hide if not in active checkboxes
         p.visible = i in checkbox_group.active
@@ -229,62 +249,124 @@ def create_app():
                 if new:  # Cumulative is ON
                     cumsum = np.nancumsum(orig)
                     source.data['value'] = cumsum
-                    figures[dataset_name].yaxis.axis_label = f"{dataset_name} (cumulative {unit})"
+                    figures[dataset_name].yaxis.axis_label = f"Σ {unit}"
                     cumulative_toggles[dataset_name].button_type = "success"
                     cumulative_state[dataset_name] = True
                 else:  # Cumulative is OFF
                     source.data['value'] = orig.copy()
-                    figures[dataset_name].yaxis.axis_label = f"{dataset_name} ({unit})"
+                    figures[dataset_name].yaxis.axis_label = f"{unit}"
                     cumulative_toggles[dataset_name].button_type = "default"
                     cumulative_state[dataset_name] = False
             return callback
         
         cumulative_toggle.on_change('active', make_cumulative_callback(name))
     
-    # Create plot layout with toggle buttons
-    plot_rows = []
+    # Container for plot rows (will be rebuilt on reorder)
+    plot_container = column(sizing_mode='stretch_width')
+    
+    def build_plot_layout():
+        """Rebuild the plot layout based on current order."""
+        plot_rows = []
+        for idx in plot_order:
+            name = dataset_names[idx]
+            if figures[name].visible:
+                controls_col = column(
+                    move_up_buttons[name],
+                    cumulative_toggles[name],
+                    move_down_buttons[name],
+                    width=50
+                )
+                plot_row = row(
+                    controls_col,
+                    figures[name],
+                    sizing_mode='stretch_width'
+                )
+                plot_rows.append(plot_row)
+        
+        plot_container.children = plot_rows if plot_rows else [Div(text="<p style='text-align:center; color:#666;'>Select datasets to display</p>")]
+    
+    # Move callbacks
+    def make_move_callback(direction, dataset_name):
+        def callback():
+            nonlocal plot_order
+            idx = dataset_names.index(dataset_name)
+            pos = plot_order.index(idx)
+            
+            if direction == 'up' and pos > 0:
+                plot_order[pos], plot_order[pos-1] = plot_order[pos-1], plot_order[pos]
+            elif direction == 'down' and pos < len(plot_order) - 1:
+                plot_order[pos], plot_order[pos+1] = plot_order[pos+1], plot_order[pos]
+            
+            build_plot_layout()
+        return callback
+    
     for name in dataset_names:
-        plot_row = row(
-            cumulative_toggles[name],
-            figures[name],
-            sizing_mode='stretch_width'
-        )
-        plot_rows.append(plot_row)
+        move_up_buttons[name].on_click(make_move_callback('up', name))
+        move_down_buttons[name].on_click(make_move_callback('down', name))
     
-    plot_column = column(*plot_rows, sizing_mode='stretch_width')
+    # Function to auto-zoom to visible datasets
+    def update_zoom_to_visible():
+        active_indices = checkbox_group.active
+        if not active_indices:
+            return
+        
+        active_names = [dataset_names[i] for i in active_indices]
+        
+        # Find time bounds of visible datasets
+        min_times = [datasets[name]['min_time'] for name in active_names]
+        max_times = [datasets[name]['max_time'] for name in active_names]
+        
+        new_min = min(min_times)
+        new_max = max(max_times)
+        
+        # Add 2% padding
+        time_range = (new_max - new_min).total_seconds()
+        padding = timedelta(seconds=time_range * 0.02)
+        
+        shared_x_range.start = new_min - padding
+        shared_x_range.end = new_max + padding
     
-    # Callback to toggle plot visibility
+    # Callback to toggle plot visibility AND auto-zoom
     def checkbox_callback(attr, old, new):
         for i, name in enumerate(dataset_names):
             visible = i in new
             figures[name].visible = visible
             cumulative_toggles[name].visible = visible
+            move_up_buttons[name].visible = visible
+            move_down_buttons[name].visible = visible
+        
+        build_plot_layout()
+        update_zoom_to_visible()
     
     checkbox_group.on_change('active', checkbox_callback)
     
-    # Initialize visibility
+    # Initialize
     for i, name in enumerate(dataset_names):
         visible = i in checkbox_group.active
         figures[name].visible = visible
         cumulative_toggles[name].visible = visible
+        move_up_buttons[name].visible = visible
+        move_down_buttons[name].visible = visible
     
-    # Export button
+    build_plot_layout()
+    update_zoom_to_visible()
+    
+    # Export button and state
     export_button = Button(label="📥 Export to Matplotlib", button_type="success", width=200)
-    
-    # Hidden download div for triggering browser download
-    download_div = Div(text="", width=1, height=1)
-    
-    # Status div
     status_div = Div(text="", width=250)
     
-    # Export callback - generates matplotlib figure server-side and triggers download
+    # Store for generated file data
+    export_data = {'b64': '', 'filename': ''}
+    
+    # Download button (initially hidden)
+    download_button = Button(label="⬇️ Click to Download", button_type="primary", width=200, visible=False)
+    
     def export_callback():
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
         
-        # Get current visible plots and x_range
         active_indices = checkbox_group.active
         active_names = [dataset_names[i] for i in active_indices]
         
@@ -292,19 +374,16 @@ def create_app():
             status_div.text = "<p style='color:red'>No datasets selected!</p>"
             return
         
-        # Get current x_range
         x_start = shared_x_range.start
         x_end = shared_x_range.end
         
-        # Convert to datetime if needed
         if isinstance(x_start, (int, float)):
             x_start = pd.Timestamp(x_start, unit='ms')
             x_end = pd.Timestamp(x_end, unit='ms')
         
         n_plots = len(active_names)
         
-        # Create matplotlib figure with subplots
-        fig, axes = plt.subplots(n_plots, 1, figsize=(12, 3 * n_plots), sharex=True)
+        fig, axes = plt.subplots(n_plots, 1, figsize=(12, 2.5 * n_plots), sharex=True)
         if n_plots == 1:
             axes = [axes]
         
@@ -314,85 +393,121 @@ def create_app():
             color = colors[dataset_names.index(name) % len(colors)]
             is_cumulative = cumulative_state[name]
             
-            # Apply cumulative if toggled
             if is_cumulative:
                 df['value'] = np.nancumsum(df['value'].values)
-                unit_label = f"cumulative {unit}"
+                unit_label = f"Σ {unit}"
             else:
                 unit_label = unit
             
-            # Filter to current view range
             mask = (df['datetime'] >= x_start) & (df['datetime'] <= x_end)
             df_view = df[mask]
             
             ax.plot(df_view['datetime'], df_view['value'], color=color, linewidth=1)
-            ax.set_ylabel(f"{name}\n({unit_label})", fontsize=10)
+            ax.set_ylabel(f"{name}\n({unit_label})", fontsize=9)
             ax.grid(True, alpha=0.3)
-            ax.tick_params(axis='both', labelsize=9)
+            ax.tick_params(axis='both', labelsize=8)
         
-        # Format x-axis
-        axes[-1].set_xlabel("Time", fontsize=11)
+        axes[-1].set_xlabel("Time", fontsize=10)
         axes[-1].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
         axes[-1].xaxis.set_major_locator(mdates.AutoDateLocator())
         plt.xticks(rotation=45)
         
-        # Title
-        fig.suptitle("SerpRateAI Time Series Data", fontsize=14, fontweight='bold')
-        
+        fig.suptitle("SerpRateAI Time Series Data", fontsize=12, fontweight='bold')
         plt.tight_layout()
         
-        # Save to buffer
         buf = io.BytesIO()
         plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
         buf.seek(0)
         plt.close(fig)
         
-        # Encode as base64 and trigger download via hidden link
         b64 = base64.b64encode(buf.read()).decode('utf-8')
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"serprateai_export_{timestamp}.png"
         
-        # Create auto-clicking download link
-        download_div.text = f'''
-            <a id="download_link_{timestamp}" 
-               download="{filename}" 
-               href="data:image/png;base64,{b64}"
-               style="display:none;">Download</a>
-            <script>
-                (function() {{
-                    var link = document.getElementById('download_link_{timestamp}');
-                    if (link) {{
-                        link.click();
-                    }}
-                }})();
-            </script>
-        '''
+        export_data['b64'] = b64
+        export_data['filename'] = filename
         
-        status_div.text = f"<p style='color:green'>✓ Downloaded {filename}</p>"
+        status_div.text = f"<p style='color:green'>✓ Generated {filename}</p>"
+        download_button.visible = True
+        download_button.label = f"⬇️ Download {filename}"
     
     export_button.on_click(export_callback)
     
-    # Layout
+    # Download callback using CustomJS
+    download_callback = CustomJS(args=dict(export_data=export_data), code="""
+        // This gets the current export data and triggers download
+        const b64 = export_data.b64;
+        const filename = export_data.filename;
+        
+        if (b64 && filename) {
+            const link = document.createElement('a');
+            link.href = 'data:image/png;base64,' + b64;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    """)
+    
+    # Use a simpler approach: embed download link directly
+    download_div = Div(text="", width=250)
+    
+    def trigger_download():
+        if export_data['b64'] and export_data['filename']:
+            download_div.text = f'''
+                <a id="dl_{export_data['filename']}" 
+                   href="data:image/png;base64,{export_data['b64']}" 
+                   download="{export_data['filename']}"
+                   style="display:inline-block; background:#28a745; color:white; 
+                          padding:10px 20px; border-radius:5px; text-decoration:none;
+                          font-weight:bold; margin-top:10px;">
+                    ⬇️ Download {export_data['filename']}
+                </a>
+            '''
+    
+    def export_and_show_link():
+        export_callback()
+        trigger_download()
+    
+    export_button.on_click(export_and_show_link)
+    
+    # Layout - CENTERED
     controls = column(
-        Div(text="<h3>Select Datasets:</h3>"),
+        Div(text="<h3 style='text-align:center;'>Select Datasets</h3>"),
         checkbox_group,
-        Div(text="<hr>"),
+        Div(text="<hr style='margin: 15px 0;'>"),
         export_button,
+        download_div,
         status_div,
-        Div(text="<hr>"),
+        Div(text="<hr style='margin: 15px 0;'>"),
         instructions,
-        width=280
+        width=280,
+        styles={'background': '#fafafa', 'padding': '15px', 'border-radius': '8px'}
     )
     
-    main_area = column(
+    # Main content area (centered)
+    content_area = column(
+        plot_container,
+        sizing_mode='stretch_width',
+        styles={'max-width': '1200px', 'margin': '0 auto'}
+    )
+    
+    main_row = row(
+        Spacer(sizing_mode='stretch_width'),
+        controls,
+        content_area,
+        Spacer(sizing_mode='stretch_width'),
+    )
+    
+    main_layout = column(
         links_bar,
         title_div,
-        row(controls, plot_column, sizing_mode='stretch_width'),
-        download_div,
-        sizing_mode='stretch_width'
+        main_row,
+        sizing_mode='stretch_width',
+        styles={'max-width': '1600px', 'margin': '0 auto', 'padding': '20px'}
     )
     
-    return main_area
+    return main_layout
 
 
 # Create and add to document
