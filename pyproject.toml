@@ -1,0 +1,15 @@
+[project]
+name = "serprateai-explorer"
+version = "0.1.0"
+description = "Bokeh-based time series explorer for SerpRateAI acoustic monitoring data"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "bokeh>=3.0",
+    "pandas",
+    "numpy",
+    "matplotlib",
+]
+
+[project.scripts]
+serprateai-explorer = "app:main"
