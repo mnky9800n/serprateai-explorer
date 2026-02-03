@@ -104,27 +104,21 @@ def create_app():
     # Color palette
     colors = Category10_10 if n_datasets <= 10 else [Turbo256[i * 256 // n_datasets] for i in range(n_datasets)]
     
-    # === TOP LINKS BAR (CENTERED) ===
-    links_bar = Div(text="""
-        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px; 
-                    display: flex; justify-content: center; align-items: center; gap: 30px;">
-            <a href="https://github.com/mnky9800n/serprateai-explorer" target="_blank" 
-               style="color: #333; text-decoration: none; font-weight: 500;">📦 Explorer Repo</a>
-            <a href="https://github.com/SerpRateAI/datasets" target="_blank" 
-               style="color: #333; text-decoration: none; font-weight: 500;">📊 Datasets Repo</a>
-            <a href="https://github.com/mnky9800n/serprateai-explorer/issues/new" target="_blank" 
-               style="background: #0066cc; color: white; padding: 10px 20px; border-radius: 6px; 
-                      text-decoration: none; font-weight: bold; font-size: 14px;">
-                🐞🐞🐞 Report Bug! 🐞🐞🐞
-            </a>
+    # === TOP BAR: Title + Links ===
+    header_bar = Div(text="""
+        <div style="background: #f5f5f5; padding: 10px 20px; margin-bottom: 10px; 
+                    display: flex; justify-content: space-between; align-items: center;">
+            <h1 style="margin: 0; font-size: 24px;">SerpRateAI Time Series Explorer</h1>
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <a href="https://github.com/mnky9800n/serprateai-explorer" target="_blank">📦 Explorer Repo</a>
+                <a href="https://github.com/SerpRateAI/datasets" target="_blank">📊 Datasets Repo</a>
+                <a href="https://github.com/mnky9800n/serprateai-explorer/issues/new" target="_blank" 
+                   style="background: #0066cc; color: white; padding: 8px 16px; border-radius: 5px; 
+                          text-decoration: none; font-weight: bold;">
+                    🐞🐞🐞 Report Bug! 🐞🐞🐞
+                </a>
+            </div>
         </div>
-    """, sizing_mode='stretch_width')
-    
-    # Title (CENTERED)
-    title_div = Div(text="""
-        <h1 style="text-align: center; margin: 20px 0; color: #333;">
-            SerpRateAI Time Series Explorer
-        </h1>
     """, sizing_mode='stretch_width')
     
     # Create checkbox group for dataset selection
@@ -197,10 +191,10 @@ def create_app():
             x_axis_type='datetime',
             x_range=shared_x_range,
             height=180,
+            width=800,
             tools=tools,
             active_drag='pan',
-            active_scroll='wheel_zoom',
-            sizing_mode='stretch_width'
+            active_scroll='wheel_zoom'
         )
         
         # Add line
@@ -471,40 +465,36 @@ def create_app():
     
     export_button.on_click(export_and_show_link)
     
-    # Layout - CENTERED
+    # Layout - clean sidebar + main area
     controls = column(
-        Div(text="<h3 style='text-align:center;'>Select Datasets</h3>"),
+        Div(text="<h3>Select Datasets</h3>"),
         checkbox_group,
-        Div(text="<hr style='margin: 15px 0;'>"),
+        Div(text="<hr>"),
         export_button,
         download_div,
         status_div,
-        Div(text="<hr style='margin: 15px 0;'>"),
+        Div(text="<hr>"),
         instructions,
-        width=280,
-        styles={'background': '#fafafa', 'padding': '15px', 'border-radius': '8px'}
+        width=280
     )
     
-    # Main content area (centered)
+    # Main content area
     content_area = column(
         plot_container,
-        sizing_mode='stretch_width',
-        styles={'max-width': '1200px', 'margin': '0 auto'}
+        sizing_mode='stretch_width'
     )
     
     main_row = row(
-        Spacer(sizing_mode='stretch_width'),
         controls,
         content_area,
-        Spacer(sizing_mode='stretch_width'),
+        sizing_mode='stretch_width'
     )
     
     main_layout = column(
-        links_bar,
-        title_div,
+        header_bar,
         main_row,
         sizing_mode='stretch_width',
-        styles={'max-width': '1600px', 'margin': '0 auto', 'padding': '20px'}
+        styles={'padding': '0 40px'}
     )
     
     return main_layout
