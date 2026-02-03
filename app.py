@@ -17,7 +17,7 @@ from bokeh.models import (
     ColumnDataSource, CheckboxGroup, Button, Div, Toggle,
     RangeTool, Range1d, DataRange1d, HoverTool,
     BoxZoomTool, PanTool, ResetTool, WheelZoomTool,
-    CrosshairTool, CustomJS, FileDownload
+    CrosshairTool, CustomJS
 )
 from bokeh.plotting import figure
 from bokeh.palettes import Category10_10, Turbo256
