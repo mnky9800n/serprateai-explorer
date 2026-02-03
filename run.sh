@@ -7,6 +7,7 @@ set -e
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
@@ -14,10 +15,19 @@ echo -e "${BLUE}║   SerpRateAI Time Series Explorer      ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo
 
-# Check for dataset updates
+# Dataset repo
 DATASETS_DIR="./data"
 DATASETS_REPO="https://github.com/SerpRateAI/datasets.git"
 
+# Clone datasets if not present
+if [ ! -d "$DATASETS_DIR" ]; then
+    echo -e "${YELLOW}Datasets not found. Cloning from GitHub...${NC}"
+    git clone "$DATASETS_REPO" "$DATASETS_DIR"
+    echo -e "${GREEN}✓ Datasets downloaded${NC}"
+    echo
+fi
+
+# Check for dataset updates
 if [ -d "$DATASETS_DIR/.git" ]; then
     echo -e "${YELLOW}Checking for dataset updates...${NC}"
     cd "$DATASETS_DIR"
@@ -31,12 +41,18 @@ if [ -d "$DATASETS_DIR/.git" ]; then
     
     if [ "$LOCAL" != "$REMOTE" ] && [ "$REMOTE" != "none" ]; then
         echo -e "${YELLOW}⚠️  Dataset updates available!${NC}"
+        
+        # Show what's new
+        echo -e "${BLUE}New commits:${NC}"
+        git log --oneline HEAD..origin/main 2>/dev/null || git log --oneline HEAD..origin/master 2>/dev/null || true
         echo
-        read -p "Would you like to update the datasets? [y/N] " -n 1 -r
+        
+        read -p "Would you like to update the datasets? [Y/n] " -n 1 -r
         echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             echo -e "${GREEN}Updating datasets...${NC}"
             git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || echo "Update failed, continuing with existing data"
+            echo -e "${GREEN}✓ Datasets updated${NC}"
         else
             echo "Skipping update, using existing data."
         fi
@@ -46,8 +62,8 @@ if [ -d "$DATASETS_DIR/.git" ]; then
     
     cd ..
 else
-    echo -e "${YELLOW}Note: data/ directory is not a git repo. Cannot check for updates.${NC}"
-    echo "To enable updates, clone from: $DATASETS_REPO"
+    echo -e "${RED}Warning: data/ exists but is not a git repo.${NC}"
+    echo -e "${YELLOW}To enable updates, remove data/ and re-run this script.${NC}"
 fi
 
 echo

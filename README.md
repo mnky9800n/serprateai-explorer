@@ -30,9 +30,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 This will:
-1. Check for dataset updates
-2. Install dependencies (via uv)
-3. Launch the Bokeh server
+1. Clone the [datasets repo](https://github.com/SerpRateAI/datasets) if not present
+2. Check for and offer to download dataset updates
+3. Install dependencies (via uv)
+4. Launch the Bokeh server
 
 Then open http://localhost:5006/app in your browser.
 
@@ -43,6 +44,7 @@ Then open http://localhost:5006/app in your browser.
 | BA1D Pressure | 39,027 | Borehole pressure (bar) |
 | BA1D Temperature | 39,027 | Borehole temperature (°C) |
 | Bubble Count | 2,434 | Bubble detection counts |
+| Fractures | 101,724 | Detected fracture events |
 | Daily Precipitation | 425 | Daily precipitation (mm) |
 | Hourly Precipitation | 35,064 | Hourly precipitation (mm) |
 | Surface Pressure | 35,064 | Atmospheric pressure (Pa) |
@@ -72,8 +74,8 @@ Then open http://localhost:5006/app in your browser.
 serprateai-explorer/
 ├── app.py              # Main Bokeh server application
 ├── pyproject.toml      # Python dependencies (uv)
-├── uv.lock            # Locked dependencies
-├── run.sh             # Launch script
-├── README.md          # This file
-└── data/              # SerpRateAI datasets
+├── uv.lock             # Locked dependencies
+├── run.sh              # Launch script (clones data on first run)
+├── README.md           # This file
+└── data/               # Cloned from SerpRateAI/datasets (gitignored)
 ```

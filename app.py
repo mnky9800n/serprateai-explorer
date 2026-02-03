@@ -30,6 +30,7 @@ DATASETS = [
     ("ba1d_pressure.csv", "datetime", "pressure_bar", "BA1D Pressure", "bar"),
     ("ba1d_temperature.csv", "datetime", "temperature_c", "BA1D Temperature", "°C"),
     ("bubble_count.csv", "datetime", "bubble_count", "Bubble Count", "count"),
+    ("fractures.csv", "datetime", "count", "Fractures", "count"),
     ("daily_precipitation.csv", "datetime", "total_precipitation_sum", "Daily Precipitation", "mm"),
     ("hourly_precipitation.csv", "datetime", "total_precip", "Hourly Precipitation", "mm"),
     ("hourly_surface_pressure.csv", "datetime", "surface_pressure", "Surface Pressure", "Pa"),
